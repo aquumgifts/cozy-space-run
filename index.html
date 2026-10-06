@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Cozy Space Run</title>
+<!-- Mini juego de muestra para itch.io: todo lo que se dibuja sale de los packs Cozy Space
+     (Ships, Backdrops, FX, Icons & UI). armar.sh copia los PNG a dist/assets y arma el ZIP. -->
+<style>
+  html, body { margin: 0; height: 100%; background: #0d1020; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; cursor: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+"use strict";
+const W = 240, H = 360;
+const COLECCION = "https://itch.io/c/8266575";
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+let S = 2;
+function ajustar() {
+  S = Math.max(1, Math.floor(Math.min(innerWidth / W, innerHeight / H)));
+  if (Math.min(innerWidth / W, innerHeight / H) < 1) S = Math.min(innerWidth / W, innerHeight / H);
+  cv.width = W * S; cv.height = H * S;
+  ctx.imageSmoothingEnabled = false;
+}
+addEventListener("resize", ajustar); ajustar();
+
+// ---------- imágenes ----------
+const ARCH = {
+  sparrow: "ships/sparrow-cream-thrust-4f", gnat: "ships/gnat-slate", wren: "ships/wren-slate", moth: "ships/moth-slate",
+  kestrel: "ships/kestrel-slate", heron: "ships/heron-slate", falcon: "ships/falcon-slate-thrust-4f",
+  laserT: "projectiles/laser-teal", laserR: "projectiles/laser-rose", plasma: "projectiles/plasma-rose-4f", missile: "projectiles/missile-2f",
+  boom16: "explosions/explosion-16-8f", boom32: "explosions/explosion-32-8f", boom48: "explosions/explosion-48-8f",
+  far: "backgrounds/stars-far-tile", mid: "backgrounds/stars-mid-tile", near: "backgrounds/stars-near-tile",
+  nebV: "backgrounds/nebula-violet-tile", nebT: "backgrounds/nebula-teal-tile", nebR: "backgrounds/nebula-rose-tile",
+  ast1: "asteroids/asteroid-1", ast2: "asteroids/asteroid-2", ast3: "asteroids/asteroid-3", ast5: "asteroids/asteroid-5", ast8: "asteroids/asteroid-8",
+  pGas: "planets/planet-gas-spin-24f", pIce: "planets/planet-ice-spin-24f", pLava: "planets/planet-lava-spin-24f", pTerran: "planets/planet-terran-spin-24f",
+  shieldBubble: "fx/shield-bubble-6f", shieldHit: "fx/shield-hit-5f", warp: "fx/warp-8f", coin: "fx/coin-spin-8f", crystal: "fx/crystal-spin-6f",
+  sparkle: "fx/pickup-sparkle-6f", muzzle: "fx/muzzle-flash-3f", spark: "fx/hit-spark-4f", smoke: "fx/smoke-puff-6f", zap: "fx/electric-zap-4f",
+  trail: "fx/engine-trail-6f", shock: "fx/shockwave-6f",
+  iHeart: "icons/icon-heart", iShield: "icons/icon-shield", iCredits: "icons/icon-credits", iStar: "icons/icon-star", iRocket: "icons/icon-rocket", iAlert: "icons/icon-alert",
+  panel: "ui/panel-dark", panelL: "ui/panel-light", barFrame: "ui/bar-frame", barRose: "ui/bar-fill-rose", barTeal: "ui/bar-fill-teal", barAmber: "ui/bar-fill-amber",
+  btnTeal: "ui/button-teal-normal", btnTealH: "ui/button-teal-hover", btnAmber: "ui/button-amber-normal", btnAmberH: "ui/button-amber-hover", cursor: "ui/cursor",
+};
+const IMG = {};
+let cargadas = 0;
+const total = Object.keys(ARCH).length;
+for (const [k, f] of Object.entries(ARCH)) {
+  const im = new Image();
+  im.onload = im.onerror = () => { cargadas++; };
+  im.src = "assets/" + f + ".png";
+  IMG[k] = im;
+}
+
+// Dibuja el cuadro f de una tira horizontal, centrado en (x, y).
+function spr(k, f, fw, fh, x, y, rot = 0, alpha = 1) {
+  const im = IMG[k];
+  if (!im.width) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(Math.round(x), Math.round(y));
+  if (rot) ctx.rotate(rot);
+  ctx.drawImage(im, f * fw, 0, fw, fh, -fw / 2, -fh / 2, fw, fh);
+  ctx.restore();
+}
+function img(k, x, y, alpha = 1) { const im = IMG[k]; if (!im.width) return; ctx.globalAlpha = alpha; ctx.drawImage(im, Math.round(x), Math.round(y)); ctx.globalAlpha = 1; }
+// 9-slice con bordes de 4 px.
+function nueve(k, x, y, w, h, b = 4) {
+  const im = IMG[k]; if (!im.width) return;
+  const iw = im.width, ih = im.height, cw = iw - 2 * b, ch = ih - 2 * b;
+  x = Math.round(x); y = Math.round(y);
+  const piezas = [[0, 0, b, b, x, y, b, b], [b, 0, cw, b, x + b, y, w - 2 * b, b], [iw - b, 0, b, b, x + w - b, y, b, b],
+    [0, b, b, ch, x, y + b, b, h - 2 * b], [b, b, cw, ch, x + b, y + b, w - 2 * b, h - 2 * b], [iw - b, b, b, ch, x + w - b, y + b, b, h - 2 * b],
+    [0, ih - b, b, b, x, y + h - b, b, b], [b, ih - b, cw, b, x + b, y + h - b, w - 2 * b, b], [iw - b, ih - b, b, b, x + w - b, y + h - b, b, b]];
+  for (const p of piezas) ctx.drawImage(im, ...p);
+}
+// Fuente del pack «Cozy Space Pixel Font» (assets/fonts/); si no carga, queda Courier.
+for (const [archivo, peso] of [["CozySpacePixel-Regular", "400"], ["CozySpacePixel-Bold", "700"]]) {
+  try { const f = new FontFace("CSP", `url(assets/fonts/${archivo}.woff)`, { weight: peso }); document.fonts.add(f); f.load().catch(() => {}); } catch (e) {}
+}
+function texto(t, x, y, { tam = 8, color = "#f2ecff", alinear = "left", sombra = "#151325" } = {}) {
+  // Cozy Space Pixel Font: nítida a 10 y 20 px (1 px de la fuente = 1 px del lienzo, o 2).
+  ctx.font = `${tam >= 10 ? 700 : 400} ${tam >= 13 ? 20 : 10}px CSP, "Courier New", monospace`;
+  ctx.textAlign = alinear; ctx.textBaseline = "top";
+  if (sombra) { ctx.fillStyle = sombra; ctx.fillText(t, Math.round(x), Math.round(y) + 1); }
+  ctx.fillStyle = color; ctx.fillText(t, Math.round(x), Math.round(y));
+}
+
+// ---------- sonido (sintetizado, sin archivos) ----------
+let audio = null, mudo = false;
+try { mudo = localStorage.getItem("csr-mudo") === "1"; } catch (e) {}
+// Música en bucle (de «Cozy Space Music»): suena desde la primera partida; M la silencia junto con los efectos.
+let musica = null, musicaGanancia = null;
+async function iniciarMusica() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === "suspended") await audio.resume();
+    if (musica || audio.state !== "running") return;
+    musica = "cargando";
+    const buf = await audio.decodeAudioData(await (await fetch("assets/music/asteroid-run.wav")).arrayBuffer());
+    musicaGanancia = audio.createGain(); musicaGanancia.gain.value = mudo ? 0 : 0.32; musicaGanancia.connect(audio.destination);
+    const f = audio.createBufferSource(); f.buffer = buf; f.loop = true; f.connect(musicaGanancia); f.start();
+    musica = f;
+  } catch (e) { musica = null; }
+}
+function sonar(tipo) {
+  if (mudo) return;
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    const t = audio.currentTime, o = audio.createOscillator(), g = audio.createGain();
+    o.connect(g); g.connect(audio.destination);
+    const def = {
+      disparo: ["square", 880, 440, 0.04, 0.025], golpe: ["square", 220, 110, 0.06, 0.05], boom: ["sawtooth", 160, 40, 0.25, 0.08],
+      moneda: ["triangle", 988, 1319, 0.12, 0.08], poder: ["triangle", 523, 1046, 0.25, 0.09], dano: ["sawtooth", 300, 60, 0.3, 0.1], jefe: ["sawtooth", 90, 30, 0.8, 0.1],
+    }[tipo];
+    o.type = def[0]; o.frequency.setValueAtTime(def[1], t); o.frequency.exponentialRampToValueAtTime(def[2], t + def[3]);
+    g.gain.setValueAtTime(def[4], t); g.gain.exponentialRampToValueAtTime(0.001, t + def[3]);
+    o.start(t); o.stop(t + def[3] + 0.02);
+  } catch (e) {}
+}
+
+// ---------- entrada ----------
+const teclas = {};
+addEventListener("keydown", (e) => {
+  if (estado !== "juego" || !musica) iniciarMusica();
+  teclas[e.code] = true;
+  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) e.preventDefault();
+  if (e.code === "KeyM") { mudo = !mudo; if (musicaGanancia) musicaGanancia.gain.value = mudo ? 0 : 0.32; try { localStorage.setItem("csr-mudo", mudo ? "1" : "0"); } catch (er) {} }
+  if ((e.code === "KeyP" || e.code === "Escape") && estado === "juego") pausa = !pausa;
+  if ((e.code === "Space" || e.code === "Enter") && (estado === "titulo" || (estado === "fin" && finT > 0.8))) empezar();
+});
+addEventListener("keyup", (e) => { teclas[e.code] = false; });
+const puntero = { x: W / 2, y: H - 60, activo: false, abajo: false };
+function aLogico(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H }; }
+let arrastre = null;
+cv.addEventListener("pointerdown", (e) => {
+  iniciarMusica();
+  const p = aLogico(e); puntero.x = p.x; puntero.y = p.y; puntero.abajo = true;
+  if (estado === "juego") { arrastre = { px: p.x, py: p.y, sx: jugador.x, sy: jugador.y }; return; }
+  for (const b of botones) if (dentro(p, b)) { b.accion(); return; }
+  if (estado === "titulo") empezar();
+});
+cv.addEventListener("pointermove", (e) => {
+  const p = aLogico(e); puntero.x = p.x; puntero.y = p.y; puntero.activo = true;
+  if (arrastre && estado === "juego") { jugador.x = arrastre.sx + (p.x - arrastre.px) * 1.3; jugador.y = arrastre.sy + (p.y - arrastre.py) * 1.3; }
+});
+addEventListener("pointerup", () => { arrastre = null; puntero.abajo = false; });
+const dentro = (p, b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+let botones = [];
+
+// ---------- estado ----------
+let estado = "titulo", pausa = false, finT = 0, tTitulo = 0;
+let jugador, balas, balasE, enemigos, rocas, premios, efectos, planeta, t, proxEnemigo, proxRoca, puntos, monedas, jefe, proxJefe, sacudir, nuevoRecord;
+efectos = []; balas = []; balasE = []; enemigos = []; rocas = []; premios = []; t = 0; planeta = nuevoPlaneta(true);
+let record = 0;
+try { record = Number(localStorage.getItem("csr-record")) || 0; } catch (e) {}
+
+function empezar() {
+  jugador = { x: W / 2, y: H - 60, vida: 3, escudo: 0, inv: 0, cad: 0, nivel: 1, cuadro: 0 };
+  balas = []; balasE = []; enemigos = []; rocas = []; premios = []; efectos = [];
+  t = 0; proxEnemigo = 1.2; proxRoca = 3; puntos = 0; monedas = 0; jefe = null; proxJefe = 70; sacudir = 0; nuevoRecord = false;
+  planeta = nuevoPlaneta(true);
+  estado = "juego"; pausa = false; botones = [];
+  efecto("warp", jugador.x, jugador.y, 14);
+}
+function nuevoPlaneta(primero) {
+  const k = ["pGas", "pIce", "pLava", "pTerran"][Math.floor(Math.random() * 4)];
+  return { k, x: 30 + Math.random() * (W - 60), y: primero ? 150 + Math.random() * 120 : -40, f: 0 };
+}
+
+// FX: tira, frames, tamaño de cuadro.
+const FX = { shieldBubble: [6, 48, 48], shieldHit: [5, 32, 32], warp: [8, 32, 48], coin: [8, 16, 16], crystal: [6, 16, 16], sparkle: [6, 24, 24],
+  muzzle: [3, 16, 16], spark: [4, 16, 16], smoke: [6, 24, 24], zap: [4, 48, 16], trail: [6, 16, 32], shock: [6, 48, 48], boom16: [8, 16, 16], boom32: [8, 32, 32], boom48: [8, 48, 48] };
+function efecto(k, x, y, fps = 18, extra = {}) { efectos.push({ k, x, y, f: 0, fps, ...extra }); }
+
+const TIPOS = {
+  gnat: { w: 18, h: 18, vida: 1, vel: 80, pts: 10 },
+  wren: { w: 20, h: 20, vida: 2, vel: 70, pts: 15 },
+  moth: { w: 26, h: 24, vida: 4, vel: 40, pts: 25, dispara: 1.8 },
+  kestrel: { w: 24, h: 28, vida: 5, vel: 50, pts: 30, dispara: 1.4 },
+  heron: { w: 32, h: 30, vida: 9, vel: 28, pts: 50, dispara: 2.2 },
+};
+function crearEnemigo() {
+  const disp = ["gnat", "gnat"];
+  if (t > 10) disp.push("wren", "wren");
+  if (t > 22) disp.push("moth");
+  if (t > 35) disp.push("kestrel");
+  if (t > 50) disp.push("heron");
+  const tipo = disp[Math.floor(Math.random() * disp.length)], d = TIPOS[tipo];
+  const e = { tipo, ...d, x: 16 + Math.random() * (W - 32), y: -20, vida: d.vida + Math.floor(t / 90), fase: Math.random() * 6, cad: (d.dispara || 0) * (0.5 + Math.random()), golpe: 0 };
+  if (tipo === "kestrel") e.dir = Math.random() < 0.5 ? -1 : 1;
+  enemigos.push(e);
+  // Los gnats llegan en grupo.
+  if (tipo === "gnat" && t > 15 && Math.random() < 0.4) for (let i = 1; i <= 2; i++) enemigos.push({ ...e, x: Math.min(W - 16, Math.max(16, e.x + (i % 2 ? 22 : -22))), y: -20 - i * 18 });
+}
+function crearJefe() {
+  jefe = { x: W / 2, y: -40, vida: 60 + Math.floor(t / 2), max: 0, fase: 0, cad: 1.5, golpe: 0, entrando: true, f: 0 };
+  jefe.max = jefe.vida;
+  sonar("jefe");
+}
+
+function disparar() {
+  const j = jugador;
+  const v = -280;
+  if (j.nivel === 1) balas.push({ x: j.x, y: j.y - 16, vx: 0, vy: v });
+  else if (j.nivel === 2) { balas.push({ x: j.x - 5, y: j.y - 14, vx: 0, vy: v }); balas.push({ x: j.x + 5, y: j.y - 14, vx: 0, vy: v }); }
+  else { balas.push({ x: j.x, y: j.y - 16, vx: 0, vy: v }); balas.push({ x: j.x - 6, y: j.y - 12, vx: -50, vy: v }); balas.push({ x: j.x + 6, y: j.y - 12, vx: 50, vy: v }); }
+  efecto("muzzle", j.x, j.y - 20, 30);
+  sonar("disparo");
+}
+function dispararEnemigo(x, y, ang, tipo = "plasma", vel = 90) { balasE.push({ x, y, vx: Math.cos(ang) * vel, vy: Math.sin(ang) * vel, tipo, f: 0 }); }
+const choca = (a, b, ra, rb) => Math.abs(a.x - b.x) < ra && Math.abs(a.y - b.y) < rb;
+
+function soltarPremio(x, y, prob) {
+  const r = Math.random();
+  if (r > prob) return;
+  const q = Math.random();
+  const tipo = q < 0.6 ? "coin" : q < 0.78 ? "crystal" : q < 0.92 ? "shield" : "heart";
+  premios.push({ tipo, x, y, f: 0, vy: 40 });
+}
+function matar(e, grande) {
+  puntos += e.pts;
+  efecto(grande ? "boom48" : e.w > 22 ? "boom32" : "boom16", e.x, e.y, 16);
+  if (e.w > 22) efecto("smoke", e.x + 4, e.y + 6, 10);
+  sonar("boom");
+  soltarPremio(e.x, e.y, e.tipo === "heron" ? 1 : e.tipo === "gnat" ? 0.18 : 0.35);
+}
+function danar() {
+  const j = jugador;
+  if (j.inv > 0) return;
+  if (j.escudo > 0) { j.escudo = Math.max(0, j.escudo - 3); efecto("shieldHit", j.x, j.y, 20); sonar("golpe"); j.inv = 0.4; return; }
+  j.vida--; j.inv = 1.6; sacudir = 0.3; j.nivel = Math.max(1, j.nivel - 1);
+  efecto("boom32", j.x, j.y, 18); efecto("zap", j.x, j.y, 16); sonar("dano");
+  if (j.vida <= 0) {
+    efecto("boom48", j.x, j.y, 12); efecto("shock", j.x, j.y, 12);
+    estado = "fin"; finT = 0;
+    if (puntos > record) { record = puntos; nuevoRecord = true; try { localStorage.setItem("csr-record", String(record)); } catch (e) {} }
+  }
+}
+
+// ---------- actualización ----------
+function actualizar(dt) {
+  tTitulo += dt;
+  if (planeta) { planeta.y += 6 * dt; planeta.f += dt * 6; if (planeta.y > H + 40) planeta = nuevoPlaneta(false); }
+  for (const e of efectos) e.f += e.fps * dt;
+  efectos = efectos.filter((e) => e.f < FX[e.k][0] || e.sigue);
+  if (estado === "fin") finT += dt;
+  if (estado !== "juego" || pausa) return;
+
+  t += dt;
+  const j = jugador;
+  let mx = 0, my = 0;
+  if (teclas.ArrowLeft || teclas.KeyA) mx--;
+  if (teclas.ArrowRight || teclas.KeyD) mx++;
+  if (teclas.ArrowUp || teclas.KeyW) my--;
+  if (teclas.ArrowDown || teclas.KeyS) my++;
+  const vel = 130;
+  j.x += mx * vel * dt; j.y += my * vel * dt;
+  j.x = Math.max(12, Math.min(W - 12, j.x)); j.y = Math.max(40, Math.min(H - 20, j.y));
+  j.cuadro += dt * 12; j.inv = Math.max(0, j.inv - dt); j.escudo = Math.max(0, j.escudo - dt);
+  j.cad -= dt;
+  if (j.cad <= 0) { disparar(); j.cad = 0.16; }
+
+  // Aparición
+  if (!jefe) {
+    proxEnemigo -= dt;
+    if (proxEnemigo <= 0) { crearEnemigo(); proxEnemigo = Math.max(0.32, 1.15 - t * 0.008) * (0.7 + Math.random() * 0.6); }
+    proxRoca -= dt;
+    if (proxRoca <= 0) {
+      const k = ["ast1", "ast2", "ast3", "ast5", "ast8"][Math.floor(Math.random() * 5)];
+      const tam = IMG[k].width || 16;
+      rocas.push({ k, x: Math.random() * W, y: -20, vx: (Math.random() - 0.5) * 30, vy: 35 + Math.random() * 30, rot: 0, vr: (Math.random() - 0.5) * 3, vida: tam > 20 ? 5 : 2, tam, golpe: 0 });
+      proxRoca = 2.5 + Math.random() * 3;
+    }
+    if (t >= proxJefe) crearJefe();
+  }
+
+  for (const b of balas) { b.x += b.vx * dt; b.y += b.vy * dt; }
+  balas = balas.filter((b) => b.y > -10 && b.x > -10 && b.x < W + 10 && !b.fuera);
+  for (const b of balasE) { b.x += b.vx * dt; b.y += b.vy * dt; b.f += dt * 12; }
+  balasE = balasE.filter((b) => b.y < H + 10 && b.y > -20 && b.x > -10 && b.x < W + 10 && !b.fuera);
+
+  for (const e of enemigos) {
+    e.fase += dt; e.golpe = Math.max(0, e.golpe - dt);
+    if (e.tipo === "gnat") { e.y += e.vel * dt; e.x += Math.sin(e.fase * 4) * 40 * dt; }
+    else if (e.tipo === "wren") { e.y += e.vel * dt; if (e.y > 40 && e.y < H * 0.6) e.x += Math.sign(j.x - e.x) * 50 * dt; }
+    else if (e.tipo === "kestrel") { e.y += (e.y < 70 ? e.vel : 10) * dt; e.x += e.dir * 45 * dt; if (e.x < 16 || e.x > W - 16) e.dir *= -1; }
+    else e.y += (e.y < 60 ? e.vel * 1.5 : e.vel) * dt;
+    if (e.dispara && e.y > 10 && e.y < H * 0.7) {
+      e.cad -= dt;
+      if (e.cad <= 0) {
+        e.cad = e.dispara;
+        const ang = Math.atan2(j.y - e.y, j.x - e.x);
+        if (e.tipo === "heron") for (const d of [-0.3, 0, 0.3]) dispararEnemigo(e.x, e.y + 12, ang + d);
+        else if (e.tipo === "kestrel") dispararEnemigo(e.x, e.y + 14, Math.PI / 2, "laserR", 150);
+        else dispararEnemigo(e.x, e.y + 10, ang);
+      }
+    }
+    if (choca(e, j, e.w / 2 + 6, e.h / 2 + 8)) { e.vida = 0; matar(e); danar(); }
+  }
+  for (const r of rocas) { r.x += r.vx * dt; r.y += r.vy * dt; r.rot += r.vr * dt; r.golpe = Math.max(0, r.golpe - dt); if (choca(r, j, r.tam / 2 + 5, r.tam / 2 + 7)) { r.vida = 0; efecto("smoke", r.x, r.y, 14); danar(); } }
+
+  // Balas del jugador
+  for (const b of balas) {
+    for (const e of enemigos) if (e.vida > 0 && choca(b, e, e.w / 2, e.h / 2)) { b.fuera = true; e.vida--; e.golpe = 0.08; efecto("spark", b.x, b.y - 4, 30); if (e.vida <= 0) matar(e); break; }
+    if (b.fuera) continue;
+    for (const r of rocas) if (r.vida > 0 && choca(b, r, r.tam / 2, r.tam / 2)) { b.fuera = true; r.vida--; r.golpe = 0.08; efecto("spark", b.x, b.y - 4, 30); if (r.vida <= 0) { puntos += 5; efecto("smoke", r.x, r.y, 14); efecto("boom16", r.x, r.y, 18); soltarPremio(r.x, r.y, 0.5); sonar("golpe"); } break; }
+    if (b.fuera || !jefe || jefe.entrando) continue;
+    if (choca(b, jefe, 18, 24)) {
+      b.fuera = true; jefe.vida--; jefe.golpe = 0.06; efecto("spark", b.x, b.y - 4, 30);
+      if (jefe.vida <= 0) {
+        puntos += 500;
+        efecto("boom48", jefe.x, jefe.y, 10); efecto("shock", jefe.x, jefe.y, 10); efecto("boom32", jefe.x - 14, jefe.y + 10, 14); efecto("boom32", jefe.x + 14, jefe.y - 8, 12);
+        for (let i = 0; i < 6; i++) premios.push({ tipo: i === 0 ? "crystal" : i === 1 ? "heart" : "coin", x: jefe.x + (i - 2.5) * 14, y: jefe.y, f: i, vy: 30 });
+        sacudir = 0.5; sonar("jefe"); jefe = null; proxJefe = t + 80;
+      }
+    }
+  }
+  enemigos = enemigos.filter((e) => e.vida > 0 && e.y < H + 30);
+  rocas = rocas.filter((r) => r.vida > 0 && r.y < H + 30);
+
+  if (jefe) {
+    const b = jefe;
+    b.f += dt * 12; b.golpe = Math.max(0, b.golpe - dt);
+    if (b.entrando) { b.y += 30 * dt; if (b.y >= 70) b.entrando = false; }
+    else {
+      b.fase += dt; b.x = W / 2 + Math.sin(b.fase * 0.9) * (W / 2 - 34);
+      b.cad -= dt;
+      if (b.cad <= 0) {
+        const p = Math.floor(b.fase / 6) % 3;
+        if (p === 0) { for (let i = 0; i < 7; i++) dispararEnemigo(b.x, b.y + 20, Math.PI / 2 + (i - 3) * 0.22, "plasma", 80); b.cad = 1.4; }
+        else if (p === 1) { dispararEnemigo(b.x, b.y + 20, Math.atan2(j.y - b.y, j.x - b.x), "plasma", 120); b.cad = 0.35; }
+        else { dispararEnemigo(b.x - 12, b.y + 22, Math.PI / 2, "laserR", 170); dispararEnemigo(b.x + 12, b.y + 22, Math.PI / 2, "laserR", 170); b.cad = 0.25; }
+      }
+    }
+    if (choca(b, j, 22, 26)) danar();
+  }
+
+  for (const b of balasE) if (choca(b, j, 6, 8)) { b.fuera = true; danar(); }
+
+  for (const p of premios) {
+    p.y += p.vy * dt; p.f += dt * 10;
+    const dx = j.x - p.x, dy = j.y - p.y, d = Math.hypot(dx, dy);
+    if (d < 40) { p.x += dx / d * 120 * dt; p.y += dy / d * 120 * dt; }
+    if (d < 12) {
+      p.tomado = true; efecto("sparkle", p.x, p.y, 20);
+      if (p.tipo === "coin") { monedas++; puntos += 10; sonar("moneda"); }
+      else if (p.tipo === "crystal") { j.nivel = Math.min(3, j.nivel + 1); puntos += 25; sonar("poder"); }
+      else if (p.tipo === "shield") { j.escudo = 10; sonar("poder"); }
+      else { j.vida = Math.min(3, j.vida + 1); sonar("poder"); }
+    }
+  }
+  premios = premios.filter((p) => !p.tomado && p.y < H + 20);
+  sacudir = Math.max(0, sacudir - dt);
+}
+
+// ---------- dibujo ----------
+let fondoY = 0;
+function capa(k, vel, alpha) {
+  const im = IMG[k]; if (!im.width) return;
+  const tam = im.width, off = (fondoY * vel) % tam;
+  ctx.globalAlpha = alpha;
+  for (let y = -tam + off; y < H; y += tam) for (let x = 0; x < W; x += tam) ctx.drawImage(im, x, Math.round(y));
+  ctx.globalAlpha = 1;
+}
+function dibujarFondo() {
+  ctx.fillStyle = "#0d1020"; ctx.fillRect(0, 0, W, H);
+  capa("far", 6, 1);
+  const neb = t > 140 ? "nebR" : t > 70 ? "nebT" : "nebV";
+  capa(neb, 10, 0.55);
+  if (planeta) spr(planeta.k, Math.floor(planeta.f) % 24, 48, 48, planeta.x, planeta.y);
+  capa("mid", 18, 1);
+  capa("near", 34, 1);
+}
+function dibujarJuego() {
+  for (const r of rocas) spr(r.k, 0, r.tam, r.tam, r.x, r.y, r.rot, r.golpe > 0 ? 0.6 : 1);
+  for (const p of premios) {
+    if (p.tipo === "coin") spr("coin", Math.floor(p.f) % 8, 16, 16, p.x, p.y);
+    else if (p.tipo === "crystal") spr("crystal", Math.floor(p.f) % 6, 16, 16, p.x, p.y);
+    else { spr(p.tipo === "shield" ? "iShield" : "iHeart", 0, 16, 16, p.x, p.y + Math.sin(p.f * 0.6) * 2); }
+  }
+  for (const e of enemigos) spr(e.tipo, 0, e.w, e.h, e.x, e.y, Math.PI, e.golpe > 0 ? 0.5 : 1);
+  if (jefe) {
+    spr("falcon", Math.floor(jefe.f) % 4, 40, 56, jefe.x, jefe.y, Math.PI, jefe.golpe > 0 ? 0.5 : 1);
+    if (!jefe.entrando) spr("shieldBubble", Math.floor(jefe.f / 2) % 6, 48, 48, jefe.x, jefe.y, 0, 0.35);
+  }
+  for (const b of balas) img("laserT", b.x - 1, b.y - 4);
+  for (const b of balasE) { if (b.tipo === "plasma") spr("plasma", Math.floor(b.f) % 4, 10, 10, b.x, b.y); else img("laserR", b.x - 1, b.y - 4); }
+  const j = jugador;
+  if (estado === "juego" && (j.inv <= 0 || Math.floor(j.inv * 12) % 2 === 0)) {
+    spr("trail", Math.floor(j.cuadro) % 6, 16, 32, j.x, j.y + 26, 0, 0.8);
+    spr("sparrow", Math.floor(j.cuadro) % 4, 24, 32, j.x, j.y);
+    if (j.escudo > 0 && (j.escudo > 2 || Math.floor(j.escudo * 8) % 2 === 0)) spr("shieldBubble", Math.floor(j.cuadro / 2) % 6, 48, 48, j.x, j.y, 0, 0.85);
+  }
+  for (const e of efectos) { const [n, fw, fh] = FX[e.k]; spr(e.k, Math.min(n - 1, Math.floor(e.f)), fw, fh, e.x, e.y); }
+}
+function barra(relleno, x, y, frac) {
+  img("barFrame", x, y);
+  const im = IMG[relleno]; if (!im.width) return;
+  const w = Math.round(46 * Math.max(0, Math.min(1, frac)));
+  if (w > 0) ctx.drawImage(im, 0, 0, w, 6, x + 1, y + 1, w, 6);
+}
+function dibujarHud() {
+  const j = jugador;
+  nueve("panel", 4, 4, 82, 34);
+  img("iHeart", 9, 6); barra("barRose", 29, 10, j.vida / 3);
+  img("iShield", 9, 20); barra("barTeal", 29, 24, j.escudo / 10);
+  nueve("panel", W - 86, 4, 82, 34);
+  img("iStar", W - 82, 6); texto(String(puntos), W - 62, 10, { tam: 9 });
+  img("iCredits", W - 82, 20); texto(String(monedas), W - 62, 24, { tam: 9 });
+  for (let i = 0; i < j.nivel; i++) img("iRocket", 4 + i * 14, 40, 0.9);
+  if (jefe) {
+    nueve("panel", 50, H - 22, W - 100, 16);
+    img("iAlert", 52, H - 22);
+    const w = W - 100 - 26;
+    const im = IMG.barRose;
+    if (im.width) ctx.drawImage(im, 0, 0, 46, 6, 70, H - 17, Math.round(w * jefe.vida / jefe.max), 6);
+  }
+  if (jefe && jefe.entrando && Math.floor(tTitulo * 4) % 2 === 0) texto("WARNING: FLAGSHIP INBOUND", W / 2, 120, { tam: 9, color: "#ffb4c8", alinear: "center" });
+  if (pausa) { nueve("panel", 50, 150, 140, 40); texto("PAUSED", W / 2, 158, { tam: 10, alinear: "center" }); texto("P to resume", W / 2, 174, { tam: 7, alinear: "center", color: "#c9b8ff" }); }
+}
+function boton(k, kH, x, y, w, h, etiqueta, accion) {
+  const b = { x, y, w, h, accion };
+  botones.push(b);
+  const sobre = dentro(puntero, b);
+  nueve(sobre ? kH : k, x, y, w, h);
+  texto(etiqueta, x + w / 2, y + h / 2 - 4, { tam: 8, alinear: "center", color: "#151325", sombra: null });
+}
+function dibujarTitulo() {
+  fondoY += 0;
+  const y0 = 70;
+  texto("COZY SPACE", W / 2, y0, { tam: 20, alinear: "center" });
+  texto("RUN", W / 2, y0 + 22, { tam: 20, alinear: "center", color: "#c9b8ff" });
+  const f = Math.floor(tTitulo * 12);
+  spr("trail", f % 6, 16, 32, W / 2, 196, 0, 0.8);
+  spr("sparrow", f % 4, 24, 32, W / 2, 170 + Math.sin(tTitulo * 2) * 3);
+  spr("coin", f % 8, 16, 16, W / 2 - 50, 160); spr("crystal", f % 6, 16, 16, W / 2 + 50, 165);
+  botones = [];
+  boton("btnTeal", "btnTealH", W / 2 - 50, 222, 100, 22, "PLAY", empezar);
+  texto("Move: arrows / WASD / drag", W / 2, 256, { tam: 7, alinear: "center", color: "#c9b8ff" });
+  texto("Fire is automatic. P pause, M mute", W / 2, 266, { tam: 7, alinear: "center", color: "#c9b8ff" });
+  if (record) texto("Best: " + record, W / 2, 284, { tam: 8, alinear: "center" });
+  texto("Every sprite here comes from the", W / 2, 314, { tam: 7, alinear: "center", color: "#8f9bb8" });
+  texto("Cozy Space asset packs (free)", W / 2, 324, { tam: 7, alinear: "center", color: "#8f9bb8" });
+  boton("btnAmber", "btnAmberH", W / 2 - 50, 336, 100, 18, "GET THE ASSETS", () => window.open(COLECCION, "_blank"));
+}
+function dibujarFin() {
+  ctx.fillStyle = "rgba(13,16,32,0.55)"; ctx.fillRect(0, 0, W, H);
+  nueve("panel", 30, 90, W - 60, 180);
+  texto("GAME OVER", W / 2, 104, { tam: 16, alinear: "center" });
+  texto("Score " + puntos, W / 2, 132, { tam: 10, alinear: "center" });
+  texto(nuevoRecord ? "New best!" : "Best " + record, W / 2, 148, { tam: 8, alinear: "center", color: nuevoRecord ? "#ffd27a" : "#c9b8ff" });
+  texto("Survived " + Math.floor(t) + "s, " + monedas + " coins", W / 2, 162, { tam: 7, alinear: "center", color: "#8f9bb8" });
+  botones = [];
+  if (finT > 0.8) boton("btnTeal", "btnTealH", W / 2 - 50, 184, 100, 22, "PLAY AGAIN", empezar);
+  texto("Ships, planets, effects and UI:", W / 2, 218, { tam: 7, alinear: "center", color: "#c9b8ff" });
+  texto("all free in the Cozy Space set", W / 2, 228, { tam: 7, alinear: "center", color: "#c9b8ff" });
+  boton("btnAmber", "btnAmberH", W / 2 - 50, 242, 100, 18, "GET THE ASSETS", () => window.open(COLECCION, "_blank"));
+}
+
+// Capturas para la página de itch: index.html#captura-juego | #captura-jefe congela una escena jugada por un piloto automático.
+const CAPTURA = location.hash.replace("#captura-", "");
+let congelado = false;
+function prepararCaptura() {
+  empezar();
+  const piloto = (n) => { for (let i = 0; i < n; i++) {
+    const obj = jefe || enemigos.slice().sort((a, b) => b.y - a.y)[0];
+    teclas.ArrowLeft = obj && obj.x < jugador.x - 4; teclas.ArrowRight = obj && obj.x > jugador.x + 4;
+    jugador.vida = 3; actualizar(1 / 60);
+  } teclas.ArrowLeft = teclas.ArrowRight = false; };
+  if (CAPTURA === "jefe") { piloto(60 * 79); jugador.nivel = 3; }
+  else {
+    piloto(60 * 40);
+    for (let i = 0; i < 60 * 30 && !(enemigos.filter((e) => e.y > 30 && e.y < 220).length >= 5 && balasE.length >= 2); i++) piloto(1);
+    jugador.escudo = 7; jugador.nivel = 3;
+  }
+  jugador.inv = 0;
+  congelado = true;
+}
+
+let ultimo = performance.now();
+function bucle(ahora) {
+  const dt = congelado ? 0 : Math.min(0.05, (ahora - ultimo) / 1000); ultimo = ahora;
+  ctx.setTransform(S, 0, 0, S, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  if (cargadas >= total && CAPTURA && CAPTURA !== location.hash && !congelado) prepararCaptura();
+  if (cargadas < total) {
+    ctx.fillStyle = "#0d1020"; ctx.fillRect(0, 0, W, H);
+    texto("Loading " + Math.floor(cargadas / total * 100) + "%", W / 2, H / 2, { alinear: "center" });
+  } else {
+    actualizar(dt);
+    if (!(estado === "juego" && pausa)) fondoY += dt * (estado === "juego" ? 1 : 0.6);
+    if (sacudir > 0) ctx.translate(Math.round((Math.random() - 0.5) * 6), Math.round((Math.random() - 0.5) * 6));
+    dibujarFondo();
+    if (estado === "titulo") dibujarTitulo();
+    else { dibujarJuego(); dibujarHud(); if (estado === "fin") dibujarFin(); }
+    if (puntero.activo && estado !== "juego") img("cursor", puntero.x, puntero.y);
+  }
+  requestAnimationFrame(bucle);
+}
+requestAnimationFrame(bucle);
+</script>
+</body>
+</html>
