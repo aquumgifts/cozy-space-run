@@ -27,4 +27,3 @@ Run it locally with any static server (`python3 -m http.server 8000`).
 ## License
 
 Code: MIT (see [LICENSE](LICENSE); comments are in Spanish). Assets: Cozy Space set by Bramble & Byte, free to use in your games; don't resell the assets on their own.
-The art is drawn in code and the music and sounds are synthesized with our own code: no AI image, music or sound generators.
